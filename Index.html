@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Workdesk</title>
+
+<!-- PWA Home Screen Support -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Workdesk">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#007aff">
+<meta name="description" content="Inbox, tasks, follow-ups and meeting notes in one place.">
+<link rel="apple-touch-icon" id="appIcon">
+<link rel="icon" id="favicon" type="image/png">
+
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<script>
+// Generate app icon inline (blue rounded square with W)
+(function(){
+  try {
+    const c = document.createElement('canvas');
+    c.width = c.height = 512;
+    const ctx = c.getContext('2d');
+    const g = ctx.createLinearGradient(0,0,512,512);
+    g.addColorStop(0,'#1a8fff'); g.addColorStop(1,'#005ecb');
+    ctx.fillStyle = g;
+    const r = 100;
+    ctx.beginPath();
+    ctx.moveTo(r,0); ctx.lineTo(512-r,0); ctx.quadraticCurveTo(512,0,512,r);
+    ctx.lineTo(512,512-r); ctx.quadraticCurveTo(512,512,512-r,512);
+    ctx.lineTo(r,512); ctx.quadraticCurveTo(0,512,0,512-r);
+    ctx.lineTo(0,r); ctx.quadraticCurveTo(0,0,r,0);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.15)';
+    ctx.beginPath(); ctx.arc(256,256,200,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='white';
+    ctx.font='bold 320px system-ui,sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('W',256,275);
+    const url = c.toDataURL('image/png');
+    document.getElementById('appIcon').href = url;
+    document.getElementById('favicon').href = url;
+  } catch(e){}
+})();
+</script>
+
+<style>
+  :root {
+    --bg:#f2f2f7; --card:#fff; --card2:#f9f9fb; --text:#1c1c1e; --sub:#8e8e93;
+    --border:#e5e5ea; --accent:#007aff; --red:#ff3b30; --orange:#ff9500;
+    --green:#34c759; --purple:#af52de; --tab-bar:rgba(255,255,255,0.88);
+  }
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  body { font-family:'DM Sans',-apple-system,sans-serif; background:var(--bg); color:var(--text); max-width:430px; margin:0 auto; min-height:100vh; overflow-x:hidden; padding-bottom:90px; }
+
+  /* Splash screen */
+  #splash { position:fixed; inset:0; background:linear-gradient(160deg,#1a8fff,#005ecb); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; transition:opacity 0.5s; }
+  #splash.hide { opacity:0; pointer-events:none; }
+  .splash-icon { width:96px; height:96px; background:rgba(255,255,255,0.2); border-radius:22px; display:flex; align-items:center; justify-content:center; font-size:52px; font-weight:800; color:white; animation:splashPop 0.4s cubic-bezier(0.34,1.56,0.64,1); }
+  .splash-title { font-size:28px; font-weight:700; color:white; letter-spacing:-0.5px; }
+  .splash-sub { font-size:14px; color:rgba(255,255,255,0.7); }
+  .splash-loader { width:40px; height:3px; background:rgba(255,255,255,0.25); border-radius:2px; margin-top:20px; overflow:hidden; }
+  .splash-loader-bar { height:100%; width:0; background:white; border-radius:2px; animation:loadBar 1.2s ease forwards; }
+
+  /* Status bar */
+  .status-bar { height:44px; background:var(--card); display:flex; align-items:center; justify-content:space-between; padding:0 20px; position:sticky; top:0; z-index:50; border-bottom:1px solid var(--border); }
+  .status-time { font-size:15px; font-weight:700; }
+
+  /* Nav */
+  .nav-header { background:var(--card); padding:4px 20px 14px; border-bottom:1px solid var(--border); position:sticky; top:44px; z-index:49; }
+  .nav-row { display:flex; align-items:center; justify-content:space-between; }
+  .nav-title { font-size:28px; font-weight:700; letter-spacing:-0.5px; }
+  .nav-subtitle { font-size:13px; color:var(--sub); margin-top:1px; }
+  .avatar-btn { width:32px; height:32px; border-radius:50%; border:none; cursor:pointer; font-size:13px; font-weight:700; color:white; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+
+  /* Segment */
+  .segment { display:flex; background:#e5e5ea; border-radius:10px; padding:2px; margin:12px 16px 0; }
+  .seg-btn { flex:1; border:none; background:transparent; padding:7px 4px; border-radius:8px; font-family:'DM Sans',sans-serif; font-size:12px; font-weight:500; color:var(--sub); cursor:pointer; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:4px; }
+  .seg-btn.active { background:white; color:var(--text); font-weight:600; box-shadow:0 1px 4px rgba(0,0,0,0.12); }
+  .badge { background:var(--accent); color:white; border-radius:10px; font-size:10px; font-weight:700; padding:1px 6px; min-width:18px; text-align:center; }
+  .badge.red { background:var(--red); } .badge.orange { background:var(--orange); }
+
+  /* Cards */
+  .section { margin:20px 16px 0; }
+  .section-label { font-size:12px; font-weight:600; color:var(--sub); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:8px; padding-left:4px; }
+  .card-list { background:var(--card); border-radius:14px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+  .card-row { padding:13px 16px; border-bottom:1px solid var(--border); display:flex; align-items:flex-start; gap:12px; cursor:pointer; transition:background 0.1s; -webkit-user-select:none; user-select:none; }
+  .card-row:last-child { border-bottom:none; }
+  .card-row:active { background:#f2f2f7; }
+
+  /* Email */
+  .unread-dot { width:8px; height:8px; border-radius:50%; background:var(--accent); margin-top:5px; flex-shrink:0; }
+  .read-dot { width:8px; height:8px; flex-shrink:0; }
+  .email-from { font-size:15px; font-weight:600; margin-bottom:2px; }
+  .email-subject { font-size:14px; margin-bottom:2px; }
+  .email-preview { font-size:13px; color:var(--sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; }
+  .email-time { font-size:12px; color:var(--sub); }
+  .tag-pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:600; }
+
+  /* Tasks */
+  .check-circle { width:24px; height:24px; border-radius:50%; border:2px solid var(--border); flex-shrink:0; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; margin-top:1px; }
+  .check-circle.done { background:var(--green); border-color:var(--green); }
+  .checkmark { color:white; font-size:13px; font-weight:700; }
+  .task-title { font-size:15px; font-weight:500; margin-bottom:3px; }
+  .task-title.done { text-decoration:line-through; color:var(--sub); }
+  .task-meta { display:flex; gap:8px; align-items:center; }
+  .task-source { font-size:12px; color:var(--sub); }
+  .priority-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+
+  /* Follow-ups */
+  .avatar { width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; color:white; flex-shrink:0; }
+  .fu-name { font-size:15px; font-weight:600; margin-bottom:2px; }
+  .fu-topic { font-size:13px; color:var(--sub); margin-bottom:4px; }
+  .fu-meeting { font-size:12px; color:var(--sub); }
+  .status-pill { display:inline-flex; align-items:center; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; }
+  .chevron { color:#c7c7cc; font-size:16px; margin-left:auto; padding-left:8px; flex-shrink:0; align-self:center; }
+
+  /* Tab bar */
+  .tab-bar { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:430px; background:var(--tab-bar); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border-top:1px solid var(--border); display:flex; padding:8px 0 20px; z-index:100; }
+  .tab-item { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; padding:4px 0; }
+  .tab-icon { font-size:22px; line-height:1; }
+  .tab-label { font-size:10px; font-weight:500; color:var(--sub); }
+  .tab-item.active .tab-label { color:var(--accent); }
+
+  /* Sheet */
+  .sheet-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:200; display:none; align-items:flex-end; justify-content:center; }
+  .sheet-overlay.open { display:flex; animation:fadeIn 0.2s; }
+  .sheet { background:white; border-radius:20px 20px 0 0; width:100%; max-width:430px; padding:0 0 40px; max-height:92vh; overflow-y:auto; animation:slideUp 0.3s cubic-bezier(0.32,0.72,0,1); }
+  .sheet-handle { width:36px; height:4px; background:#d1d1d6; border-radius:2px; margin:10px auto 0; }
+  .sheet-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px 10px; border-bottom:1px solid var(--border); }
+  .sheet-title { font-size:17px; font-weight:700; }
+  .sheet-close { width:30px; height:30px; border-radius:50%; background:#e5e5ea; border:none; cursor:pointer; font-size:15px; color:var(--sub); display:flex; align-items:center; justify-content:center; }
+  .sheet-body { padding:16px 20px; }
+
+  /* Buttons */
+  .btn-row { display:flex; gap:10px; margin-top:16px; }
+  .btn { flex:1; padding:13px; border-radius:12px; border:none; font-family:'DM Sans',sans-serif; font-size:15px; font-weight:600; cursor:pointer; transition:opacity 0.15s; }
+  .btn:active { opacity:0.7; }
+  .btn-primary { background:var(--accent); color:white; }
+  .btn-secondary { background:#f2f2f7; color:var(--text); }
+  .btn-danger { background:#fff1f0; color:var(--red); }
+
+  /* Forms */
+  .form-group { margin-bottom:14px; }
+  .form-label { font-size:13px; font-weight:600; color:var(--sub); margin-bottom:6px; display:block; }
+  .form-input { width:100%; padding:12px 14px; border-radius:10px; border:1.5px solid var(--border); font-family:'DM Sans',sans-serif; font-size:15px; color:var(--text); background:var(--card2); outline:none; appearance:none; -webkit-appearance:none; }
+  .form-input:focus { border-color:var(--accent); }
+  .priority-row { display:flex; gap:8px; }
+  .priority-chip { flex:1; padding:10px 6px; border-radius:10px; border:1.5px solid var(--border); background:white; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; text-align:center; transition:all 0.15s; }
+  .priority-chip.sel-High { background:#fff1f0; border-color:var(--red); color:var(--red); }
+  .priority-chip.sel-Medium { background:#fff8ee; border-color:var(--orange); color:var(--orange); }
+  .priority-chip.sel-Low { background:#f0fff4; border-color:var(--green); color:var(--green); }
+
+  /* Status chips for follow-up form */
+  .status-row { display:flex; gap:8px; }
+  .status-chip { flex:1; padding:10px 6px; border-radius:10px; border:1.5px solid var(--border); background:white; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; text-align:center; transition:all 0.15s; }
+  .status-chip.sel-Pending { background:#fff8ee; border-color:var(--orange); color:var(--orange); }
+  .status-chip.sel-Overdue { background:#fff1f0; border-color:var(--red); color:var(--red); }
+
+  /* Color picker row */
+  .color-row { display:flex; gap:10px; flex-wrap:wrap; }
+  .color-dot { width:32px; height:32px; border-radius:50%; cursor:pointer; transition:transform 0.15s; border:3px solid transparent; }
+  .color-dot.selected { transform:scale(1.2); border-color:white; box-shadow:0 0 0 2px var(--accent); }
+
+  /* AI */
+  .ai-loading { display:flex; align-items:center; gap:8px; color:var(--sub); font-size:14px; padding:10px 0; }
+  .spinner { width:16px; height:16px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
+  .ai-label { font-size:12px; font-weight:600; color:var(--sub); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
+  .ai-bubble { background:#f2f2f7; border-radius:12px; padding:12px 14px; font-size:14px; line-height:1.6; }
+
+  /* FAB */
+  .fab { position:fixed; bottom:84px; right:20px; width:52px; height:52px; border-radius:50%; background:var(--accent); border:none; color:white; font-size:26px; cursor:pointer; display:none; align-items:center; justify-content:center; box-shadow:0 4px 14px rgba(0,122,255,0.4); z-index:99; transition:transform 0.15s; }
+  .fab:active { transform:scale(0.93); }
+
+  /* Toast */
+  .toast { position:fixed; top:60px; left:50%; transform:translateX(-50%) translateY(-20px); background:rgba(30,30,32,0.92); color:white; padding:10px 20px; border-radius:20px; font-size:14px; font-weight:500; z-index:500; opacity:0; transition:all 0.3s; white-space:nowrap; backdrop-filter:blur(10px); }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* Gmail sign in */
+  .signin-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 30px; text-align:center; min-height:60vh; }
+  .signin-icon { font-size:56px; margin-bottom:20px; }
+  .signin-title { font-size:22px; font-weight:700; margin-bottom:8px; }
+  .signin-sub { font-size:14px; color:var(--sub); line-height:1.6; margin-bottom:28px; }
+  .gmail-btn { display:flex; align-items:center; gap:12px; background:white; border:1.5px solid var(--border); border-radius:14px; padding:14px 24px; font-family:'DM Sans',sans-serif; font-size:16px; font-weight:600; cursor:pointer; color:var(--text); box-shadow:0 2px 8px rgba(0,0,0,0.08); transition:all 0.2s; }
+  .gmail-btn:active { transform:scale(0.97); }
+  .gmail-logo { width:22px; height:22px; }
+  .refresh-btn { background:none; border:none; color:var(--accent); font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
+
+  /* Skeleton */
+  .skeleton { background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%); background-size:200% 100%; animation:shimmer 1.2s infinite; border-radius:6px; }
+
+  /* Notes */
+  .note-card { background:white; border-radius:14px; margin:12px 16px 0; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,0.06); cursor:pointer; transition:transform 0.15s; -webkit-user-select:none; user-select:none; }
+  .note-card:active { transform:scale(0.98); }
+  .note-card-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px; }
+  .note-card-title { font-size:15px; font-weight:700; flex:1; }
+  .note-card-date { font-size:11px; color:var(--sub); flex-shrink:0; margin-left:8px; }
+  .note-card-preview { font-size:13px; color:var(--sub); line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .note-tag { display:inline-flex; align-items:center; gap:4px; margin-top:8px; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; }
+  .note-tag.meeting { background:#eef3ff; color:#007aff; }
+  .note-tag.voice { background:#f5eeff; color:#af52de; }
+  .note-tag.manual { background:#f2f2f7; color:#8e8e93; }
+
+  /* Note editor */
+  .note-editor-overlay { position:fixed; inset:0; background:white; z-index:300; display:none; flex-direction:column; }
+  .note-editor-overlay.open { display:flex; animation:slideInRight 0.28s cubic-bezier(0.32,0.72,0,1); }
+  .note-editor-nav { display:flex; align-items:center; justify-content:space-between; padding:54px 16px 12px; border-bottom:1px solid var(--border); background:white; flex-shrink:0; }
+  .note-editor-back { border:none; background:none; color:var(--accent); font-family:'DM Sans',sans-serif; font-size:17px; cursor:pointer; }
+  .note-editor-actions { display:flex; gap:8px; }
+  .note-action-btn { border:none; border-radius:20px; padding:6px 14px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
+  .note-action-btn.purple { background:#f5eeff; color:var(--purple); }
+  .note-action-btn.blue { background:#eef3ff; color:var(--accent); }
+  .note-title-input { width:100%; border:none; outline:none; font-family:'DM Sans',sans-serif; font-size:24px; font-weight:700; color:var(--text); padding:16px 20px 8px; background:transparent; flex-shrink:0; }
+  .note-title-input::placeholder { color:#c7c7cc; }
+  .note-body-input { flex:1; width:100%; border:none; outline:none; resize:none; font-family:'DM Sans',sans-serif; font-size:16px; line-height:1.7; color:var(--text); padding:8px 20px 20px; background:transparent; min-height:0; }
+  .note-body-input::placeholder { color:#c7c7cc; }
+  .note-meta-bar { padding:8px 20px; display:flex; gap:12px; border-top:1px solid var(--border); background:white; flex-shrink:0; }
+  .note-meta-text { font-size:12px; color:var(--sub); }
+
+  /* Recorder */
+  .recorder-bar { padding:12px 20px 16px; background:white; border-top:1px solid var(--border); flex-shrink:0; }
+  .record-btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:14px; border-radius:14px; border:none; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:16px; font-weight:600; transition:all 0.2s; }
+  .record-btn.idle { background:#f5eeff; color:var(--purple); }
+  .record-btn.recording { background:var(--red); color:white; animation:pulseRed 1.5s ease-in-out infinite; }
+  .recording-status-row { display:flex; align-items:center; gap:10px; margin-top:10px; }
+  .rec-dot { width:8px; height:8px; border-radius:50%; background:var(--red); animation:blink 1s step-start infinite; flex-shrink:0; }
+  .waveform { display:flex; align-items:center; gap:3px; height:24px; }
+  .wave-bar { width:3px; background:var(--red); border-radius:2px; animation:wave 0.8s ease-in-out infinite; }
+  .wave-bar:nth-child(1){animation-delay:0s}.wave-bar:nth-child(2){animation-delay:.1s}.wave-bar:nth-child(3){animation-delay:.2s}
+  .wave-bar:nth-child(4){animation-delay:.3s}.wave-bar:nth-child(5){animation-delay:.2s}.wave-bar:nth-child(6){animation-delay:.1s}.wave-bar:nth-child(7){animation-delay:0s}
+  .rec-timer { font-size:13px; font-weight:600; color:var(--red); }
+  .ai-note-panel { background:#f9f9fb; border-top:1px solid var(--border); padding:14px 20px; flex-shrink:0; max-height:36vh; overflow-y:auto; }
+  .ai-note-panel-title { font-size:13px; font-weight:700; color:var(--purple); margin-bottom:10px; }
+  .ai-note-section { margin-bottom:12px; }
+  .ai-note-label { font-size:11px; font-weight:700; color:var(--sub); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:5px; }
+  .ai-note-content { font-size:14px; line-height:1.6; }
+  .ai-action-item { display:flex; align-items:flex-start; gap:8px; padding:5px 0; border-bottom:1px solid var(--border); }
+  .ai-action-item:last-child { border-bottom:none; }
+  .ai-action-bullet { color:var(--accent); font-weight:700; flex-shrink:0; }
+
+  @keyframes splashPop { from{transform:scale(0.6);opacity:0} to{transform:scale(1);opacity:1} }
+  @keyframes loadBar { from{width:0} to{width:100%} }
+  @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+  @keyframes slideInRight { from{transform:translateX(100%)} to{transform:translateX(0)} }
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  @keyframes pulseRed { 0%,100%{box-shadow:0 0 0 0 rgba(255,59,48,.35)} 50%{box-shadow:0 0 0 10px rgba(255,59,48,0)} }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+  @keyframes wave { 0%,100%{height:5px} 50%{height:20px} }
+</style>
+</head>
+<body>
+
+<!-- Splash Screen -->
+<div id="splash">
+  <div class="splash-icon">W</div>
+  <div class="splash-title">Workdesk</div>
+  <div class="splash-sub">Your work, organized.</div>
+  <div class="splash-loader"><div class="splash-loader-bar"></div></div>
+</div>
+
+<div class="status-bar">
+  <span class="status-time" id="statusTime">9:41</span>
+  <div style="font-size:13px">●●● 🔋</div>
+</div>
+
+<div class="nav-header">
+  <div class="nav-row">
+    <div>
+      <div class="nav-title" id="navTitle">Inbox</div>
+      <div class="nav-subtitle" id="navSub">Loading…</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="refresh-btn" id="refreshBtn" onclick="refreshEmails()" style="display:none">↻</button>
+      <div id="userAvatarWrap" style="display:none">
+        <button class="avatar-btn" id="userAvatar" onclick="showSignOutSheet()" style="background:#007aff">?</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="segment">
+  <button class="seg-btn active" onclick="switchTab('emails',this)" id="seg-emails">✉️ <span class="badge" id="emailBadge" style="display:none">0</span></button>
+  <button class="seg-btn" onclick="switchTab('tasks',this)" id="seg-tasks">✅ <span class="badge orange" id="taskBadge">3</span></button>
+  <button class="seg-btn" onclick="switchTab('followups',this)" id="seg-followups">🔁 <span class="badge red" id="fuBadge">1</span></button>
+  <button class="seg-btn" onclick="switchTab('notes',this)" id="seg-notes">📝</button>
+</div>
+
+<div id="content"></div>
+
+<div class="tab-bar">
+  <div class="tab-item active" onclick="switchTab('emails',document.getElementById('seg-emails'))"><div class="tab-icon">✉️</div><div class="tab-label">Emails</div></div>
+  <div class="tab-item" onclick="switchTab('tasks',document.getElementById('seg-tasks'))"><div class="tab-icon">✅</div><div class="tab-label">Tasks</div></div>
+  <div class="tab-item" onclick="switchTab('followups',document.getElementById('seg-followups'))"><div class="tab-icon">🔁</div><div class="tab-label">Follow-ups</div></div>
+  <div class="tab-item" onclick="switchTab('notes',document.getElementById('seg-notes'))"><div class="tab-icon">📝</div><div class="tab-label">Notes</div></div>
+</div>
+
+<button class="fab" id="fab" onclick="fabAction()">+</button>
+
+<!-- Sheet -->
+<div class="sheet-overlay" id="sheetOverlay" onclick="closeSheet(event)">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header"><span class="sheet-title" id="sheetTitle"></span><button class="sheet-close" onclick="closeSheetDirect()">✕</button></div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+</div>
+
+<!-- Note editor -->
+<div class="note-editor-overlay" id="noteEditor">
+  <div class="note-editor-nav">
+    <button class="note-editor-back" onclick="closeNote()">‹ Notes</button>
+    <div class="note-editor-actions">
+      <button class="note-action-btn purple" onclick="aiSummarizeNote()">✦ AI</button>
+      <button class="note-action-btn blue" onclick="saveNote()">Save</button>
+    </div>
+  </div>
+  <input class="note-title-input" id="noteTitleInput" placeholder="Meeting title…">
+  <textarea class="note-body-input" id="noteBodyInput" placeholder="Start typing or tap the mic to record…"></textarea>
+  <div class="note-meta-bar">
+    <span class="note-meta-text" id="noteMetaDate"></span>
+    <span class="note-meta-text" id="noteWordCount">0 words</span>
+  </div>
+  <div class="recorder-bar">
+    <div id="micUnsupported" style="display:none;padding:10px;background:#fff8ee;border-radius:12px;font-size:13px;color:#c07000;margin-bottom:8px;text-align:center">🎙️ Voice recording requires Chrome or Safari.</div>
+    <button class="record-btn idle" id="recordBtn" onclick="toggleRecording()"><span>🎙️</span><span id="recordBtnText">Record Meeting</span></button>
+    <div id="recordingStatus" style="display:none">
+      <div class="recording-status-row">
+        <div class="rec-dot"></div>
+        <div class="waveform"><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div></div>
+        <span class="rec-timer" id="recTimer">0:00</span>
+        <span style="font-size:12px;color:#8e8e93;margin-left:2px">Recording…</span>
+      </div>
+    </div>
+    <div id="micPermissionMsg" style="display:none;text-align:center;padding:6px 4px;font-size:12px;color:#8e8e93;margin-top:6px"></div>
+  </div>
+  <div class="ai-note-panel" id="aiNotePanel" style="display:none">
+    <div class="ai-note-panel-title">✦ AI Meeting Summary</div>
+    <div id="aiNotePanelContent"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CLIENT_ID='785354065620-7m1hfvrelea7qk8ir8i2hqqmb9p8e9ht.apps.googleusercontent.com';
+const SCOPES='https://www.googleapis.com/auth/gmail.readonly';
+
+const AVATAR_COLORS=['#007aff','#34c759','#ff9500','#ff3b30','#af52de','#5856d6','#ff2d55','#00c7be'];
+
+const state={
+  tab:'emails', gmailAuthed:false, accessToken:null, userEmail:'', userName:'',
+  emails:[], emailsLoading:false,
+  tasks:[
+    {id:1,title:'Review Q2 budget proposal',priority:'High',due:'Today',done:false,source:'Manual'},
+    {id:2,title:'Send onboarding doc to new hire',priority:'Medium',due:'Tomorrow',done:false,source:'Manual'},
+    {id:3,title:'Prep slides for Thursday standup',priority:'High',due:'Thu Apr 3',done:false,source:'Manual'},
+  ],
+  followups:[
+    {id:1,contact:'Sarah Chen',initials:'SC',color:'#007aff',topic:'Budget approval sign-off',meeting:'Q2 Planning — Mar 20',status:'Pending',daysAgo:5},
+    {id:2,contact:'Mike Torres',initials:'MT',color:'#ff3b30',topic:'Integration timeline confirmed',meeting:'Partnership call — Mar 18',status:'Overdue',daysAgo:7},
+    {id:3,contact:'Priya Nair',initials:'PN',color:'#34c759',topic:'Design review feedback',meeting:'Design sync — Mar 22',status:'Sent',daysAgo:3},
+  ],
+  notes:[], editingNoteId:null,
+};
+
+let recognition=null,isRecording=false,recTimerInterval=null,recSeconds=0,tokenClient=null;
+let selectedFuColor=AVATAR_COLORS[0];
+
+const priorityColors={High:'#ff3b30',Medium:'#ff9500',Low:'#34c759'};
+const statusColors={Pending:'#ff9500',Overdue:'#ff3b30',Sent:'#34c759'};
+const tagColors={'Action Required':{bg:'#fff1f0',color:'#ff3b30'},'Follow Up':{bg:'#fff8ee',color:'#ff9500'},'FYI':{bg:'#f0f4ff',color:'#007aff'}};
+
+// Splash
+window.addEventListener('load',()=>{
+  setTimeout(()=>{ document.getElementById('splash').classList.add('hide'); setTimeout(()=>{ document.getElementById('splash').style.display='none'; },500); },1400);
+  initGoogleAuth();
+  render();
+  updateTime();
+});
+
+function updateTime(){ const n=new Date(),h=n.getHours(),m=n.getMinutes(); document.getElementById('statusTime').textContent=`${h%12||12}:${m.toString().padStart(2,'0')}`; }
+setInterval(updateTime,15000);
+
+// ── GOOGLE AUTH ───────────────────────────
+function initGoogleAuth(){
+  if(!window.google){setTimeout(initGoogleAuth,300);return;}
+  tokenClient=google.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPES,callback:onTokenResponse});
+}
+function signInWithGoogle(){ if(!tokenClient){showToast('Auth not ready…');return;} tokenClient.requestAccessToken({prompt:'consent'}); }
+function onTokenResponse(resp){
+  if(resp.error){showToast('Sign-in failed: '+resp.error);return;}
+  state.accessToken=resp.access_token; state.gmailAuthed=true;
+  fetchUserProfile(); loadEmails();
+  document.getElementById('refreshBtn').style.display='block';
+  document.getElementById('userAvatarWrap').style.display='block';
+}
+async function fetchUserProfile(){
+  try{
+    const r=await gfetch('https://www.googleapis.com/oauth2/v2/userinfo');
+    state.userName=r.name||r.email; state.userEmail=r.email;
+    const initials=(r.name||r.email).split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    document.getElementById('userAvatar').textContent=initials;
+    document.getElementById('navSub').textContent=r.email;
+  }catch(e){}
+}
+function signOut(){
+  if(state.accessToken)google.accounts.oauth2.revoke(state.accessToken);
+  state.accessToken=null;state.gmailAuthed=false;state.emails=[];state.userName='';state.userEmail='';
+  document.getElementById('refreshBtn').style.display='none';
+  document.getElementById('userAvatarWrap').style.display='none';
+  document.getElementById('navSub').textContent='Tap to connect Gmail';
+  closeSheetDirect();render();
+}
+function showSignOutSheet(){
+  document.getElementById('sheetTitle').textContent='Account';
+  const initials=(state.userName||state.userEmail||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  document.getElementById('sheetBody').innerHTML=`
+    <div style="text-align:center;padding:10px 0 20px">
+      <div style="width:56px;height:56px;border-radius:50%;background:#007aff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:white;margin:0 auto 12px">${initials}</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:4px">${state.userName||'User'}</div>
+      <div style="font-size:13px;color:#8e8e93;margin-bottom:24px">${state.userEmail}</div>
+      <button class="btn btn-danger" style="width:100%" onclick="signOut()">Sign Out of Gmail</button>
+    </div>`;
+  document.getElementById('sheetOverlay').classList.add('open');
+}
+
+// ── GMAIL API ─────────────────────────────
+async function gfetch(url,opts={}){
+  const r=await fetch(url,{...opts,headers:{Authorization:'Bearer '+state.accessToken,'Content-Type':'application/json',...(opts.headers||{})}});
+  if(!r.ok)throw new Error('API error '+r.status);
+  return r.json();
+}
+async function loadEmails(){
+  state.emailsLoading=true;render();
+  try{
+    const list=await gfetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&labelIds=INBOX');
+    if(!list.messages||!list.messages.length){state.emails=[];state.emailsLoading=false;render();return;}
+    const msgs=await Promise.all(list.messages.map(m=>gfetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`)));
+    state.emails=msgs.map(m=>{
+      const headers=m.payload.headers||[];
+      const get=name=>(headers.find(h=>h.name.toLowerCase()===name.toLowerCase())||{}).value||'';
+      const from=parseFrom(get('From'));
+      return{id:m.id,from:from.name,email:from.email,subject:get('Subject')||'(no subject)',preview:m.snippet||'',tag:autoTag(get('Subject'),m.snippet||''),time:parseDate(get('Date')),read:!(m.labelIds||[]).includes('UNREAD'),gmailId:m.id};
+    });
+    state.emailsLoading=false; updateBadges(); render();
+  }catch(e){state.emailsLoading=false;state.emails=[];render();showToast('Could not load Gmail: '+e.message);}
+}
+async function refreshEmails(){showToast('Refreshing…');await loadEmails();showToast('Inbox updated ✓');}
+async function markGmailRead(id){
+  if(!state.accessToken)return;
+  try{await gfetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}/modify`,{method:'POST',body:JSON.stringify({removeLabelIds:['UNREAD']})});}catch(e){}
+}
+function parseFrom(raw){const m=raw.match(/^(.+?)\s*<(.+?)>$/);return m?{name:m[1].replace(/"/g,'').trim(),email:m[2]}:{name:raw,email:raw};}
+function parseDate(raw){
+  if(!raw)return'';const d=new Date(raw),now=new Date(),diff=(now-d)/1000;
+  if(diff<86400&&d.getDate()===now.getDate())return d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  if(diff<86400*2)return'Yesterday';
+  if(diff<86400*7)return d.toLocaleDateString('en-US',{weekday:'short'});
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+}
+function autoTag(s,sn){const t=(s+sn).toLowerCase();if(/urgent|asap|action required|please review|deadline/.test(t))return'Action Required';if(/follow[- ]?up|following up|checking in/.test(t))return'Follow Up';return'FYI';}
+
+// ── BADGES & TABS ─────────────────────────
+function updateBadges(){
+  const unread=state.emails.filter(e=>!e.read).length;
+  const pending=state.tasks.filter(t=>!t.done).length;
+  const overdue=state.followups.filter(f=>f.status==='Overdue').length;
+  const eb=document.getElementById('emailBadge'),tb=document.getElementById('taskBadge'),fb=document.getElementById('fuBadge');
+  eb.textContent=unread;eb.style.display=unread?'':'none';
+  tb.textContent=pending;tb.style.display=pending?'':'none';
+  fb.textContent=overdue;fb.style.display=overdue?'':'none';
+  if(!state.gmailAuthed)document.getElementById('navSub').textContent='Tap to connect Gmail';
+  else if(state.userEmail)document.getElementById('navSub').textContent=state.userEmail;
+}
+function switchTab(tab,btn){
+  state.tab=tab;
+  document.querySelectorAll('.seg-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
+  document.querySelectorAll('.tab-item').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-item')[{emails:0,tasks:1,followups:2,notes:3}[tab]].classList.add('active');
+  document.getElementById('navTitle').textContent={emails:'Inbox',tasks:'Tasks',followups:'Follow-Ups',notes:'Notes'}[tab];
+  const fab=document.getElementById('fab');
+  fab.style.display=(tab==='tasks'||tab==='followups'||tab==='notes')?'flex':'none';
+  fab.textContent=tab==='notes'?'✏️':'+';
+  document.getElementById('refreshBtn').style.display=(tab==='emails'&&state.gmailAuthed)?'block':'none';
+  render();
+}
+function fabAction(){
+  if(state.tab==='tasks')openAddTask();
+  else if(state.tab==='followups')openAddFollowUp();
+  else if(state.tab==='notes')openNewNote();
+}
+
+// ── RENDER ────────────────────────────────
+function render(){
+  const c=document.getElementById('content');
+  if(state.tab==='emails')c.innerHTML=renderEmails();
+  else if(state.tab==='tasks')c.innerHTML=renderTasks();
+  else if(state.tab==='followups')c.innerHTML=renderFollowUps();
+  else if(state.tab==='notes')c.innerHTML=renderNotes();
+  updateBadges();
+}
+
+// ── EMAILS ────────────────────────────────
+function renderEmails(){
+  if(!state.gmailAuthed)return`<div class="signin-screen"><div class="signin-icon">📬</div><div class="signin-title">Connect your Gmail</div><div class="signin-sub">Sign in with Google to see your real inbox, get AI summaries, and turn emails into tasks.</div><button class="gmail-btn" onclick="signInWithGoogle()"><svg class="gmail-logo" viewBox="0 0 48 48"><g><path fill="#4285F4" d="M45.1 20.1H24v8h12.1C34.9 33 30 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.1 8.1 3l5.7-5.7C34.6 6.7 29.6 5 24 5 13 5 4 14 4 25s9 20 20 20c11 0 19-7.7 19-19 0-1.3-.1-2.6-.4-3.9z"/><path fill="#FBBC05" d="M4 25c0-2.8.5-5.4 1.5-7.8l6.1 4.7c-.4 1-.6 2-.6 3.1s.2 2.1.6 3.1l-6.1 4.7C5.5 30.4 4 27.8 4 25z"/><path fill="#EA4335" d="M24 5c5.6 0 10.6 1.9 14.4 5.1l-5.7 5.7C30.5 13.7 27.4 12 24 12c-6.4 0-11.7 4.9-12 11.2l-6.5-5C9.1 10.2 16 5 24 5z"/><path fill="#34A853" d="M44.6 24.1c.3 1.3.4 2.6.4 3.9 0 11.3-8 19-19 19-8 0-14.9-4.7-18.1-11.6l6.5-5C16.3 34.2 19.9 36 24 36c6 0 10.9-3 12.1-7.9h-12V21h20.1c.2.7.4 1.4.4 3.1z"/></g></svg>Sign in with Google</button></div>`;
+  if(state.emailsLoading)return`<div class="section"><div class="section-label">Loading inbox…</div><div class="card-list">${[1,2,3].map(()=>`<div class="card-row"><div><div class="skeleton" style="width:120px;height:13px;margin-bottom:8px"></div><div class="skeleton" style="width:200px;height:12px;margin-bottom:6px"></div><div class="skeleton" style="width:160px;height:11px"></div></div></div>`).join('')}</div></div>`;
+  if(!state.emails.length)return`<div class="signin-screen"><div class="signin-icon">📭</div><div class="signin-title">No emails found</div><div class="signin-sub">Your inbox appears empty.</div><button class="gmail-btn" onclick="refreshEmails()">↻ Refresh</button></div>`;
+  const today=state.emails.filter(e=>e.time.includes('AM')||e.time.includes('PM')||e.time==='Yesterday');
+  const older=state.emails.filter(e=>!e.time.includes('AM')&&!e.time.includes('PM')&&e.time!=='Yesterday');
+  let html='';
+  if(today.length){html+=`<div class="section"><div class="section-label">Recent</div><div class="card-list">`;today.forEach(e=>html+=emailRow(e));html+=`</div></div>`;}
+  if(older.length){html+=`<div class="section"><div class="section-label">Earlier</div><div class="card-list">`;older.forEach(e=>html+=emailRow(e));html+=`</div></div>`;}
+  return html;
+}
+function emailRow(e){
+  const tc=tagColors[e.tag]||{bg:'#f2f2f7',color:'#8e8e93'};
+  return`<div class="card-row" onclick="openEmail('${e.id}')"><div class="${e.read?'read-dot':'unread-dot'}"></div><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;margin-bottom:2px"><span class="email-from" style="font-weight:${e.read?500:700}">${e.from}</span><span class="email-time">${e.time}</span></div><div class="email-subject" style="font-weight:${e.read?400:600}">${e.subject}</div><div class="email-preview">${e.preview}</div><div style="margin-top:6px"><span class="tag-pill" style="background:${tc.bg};color:${tc.color}">${e.tag}</span></div></div><div class="chevron">›</div></div>`;
+}
+function openEmail(id){
+  const e=state.emails.find(e=>e.id===id);if(!e)return;
+  if(!e.read){e.read=true;markGmailRead(e.gmailId);render();}
+  const tc=tagColors[e.tag]||{bg:'#f2f2f7',color:'#8e8e93'};
+  document.getElementById('sheetTitle').textContent='Email';
+  document.getElementById('sheetBody').innerHTML=`
+    <div style="margin-bottom:14px">
+      <div style="font-size:18px;font-weight:700;margin-bottom:4px">${e.subject}</div>
+      <div style="font-size:13px;color:#8e8e93;margin-bottom:4px">From: ${e.from} &lt;${e.email}&gt;</div>
+      <div style="font-size:12px;color:#8e8e93;margin-bottom:8px">${e.time}</div>
+      <span class="tag-pill" style="background:${tc.bg};color:${tc.color}">${e.tag}</span>
+    </div>
+    <div style="background:#f2f2f7;border-radius:12px;padding:14px;font-size:14px;line-height:1.7;margin-bottom:16px">${e.preview}</div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="aiSummarizeEmail('${e.id}')">✦ AI Summary</button>
+      <button class="btn btn-secondary" onclick="emailToTask('${e.id}')">+ Task</button>
+    </div>
+    <div id="aiResult"></div>`;
+  document.getElementById('sheetOverlay').classList.add('open');
+}
+async function aiSummarizeEmail(id){
+  const e=state.emails.find(e=>e.id===id);
+  const aiDiv=document.getElementById('aiResult');
+  aiDiv.innerHTML=`<div class="ai-loading"><div class="spinner"></div> Claude is analyzing…</div>`;
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:`Work assistant. Plain text only:\n\nSUMMARY: One sentence.\nACTION: What to do, or "No action needed".\nREPLY: A 2-sentence professional reply.\n\nFrom: ${e.email}\nSubject: ${e.subject}\nContent: ${e.preview}`}]})});
+    const data=await res.json();const text=data.content?.map(b=>b.text||'').join('')||'';
+    let html='<div style="margin-top:14px">';
+    text.split('\n').filter(l=>l.trim()).forEach(line=>{['SUMMARY','ACTION','REPLY'].forEach(k=>{if(line.startsWith(k+':'))html+=`<div style="margin-bottom:10px"><div class="ai-label">${k}</div><div class="ai-bubble">${line.slice(k.length+1).trim()}</div></div>`;});});
+    aiDiv.innerHTML=html+'</div>';
+  }catch(err){aiDiv.innerHTML=`<div class="ai-bubble" style="color:#ff3b30">Couldn't load summary.</div>`;}
+}
+function emailToTask(id){
+  const e=state.emails.find(e=>e.id===id);
+  state.tasks.unshift({id:Date.now(),title:`Reply to: ${e.subject}`,priority:'Medium',due:'This week',done:false,source:`Email: ${e.from}`});
+  closeSheetDirect();switchTab('tasks',document.getElementById('seg-tasks'));showToast('Task added ✓');
+}
+
+// ── TASKS ─────────────────────────────────
+function renderTasks(){
+  const pending=state.tasks.filter(t=>!t.done),done=state.tasks.filter(t=>t.done);
+  let html='';
+  if(pending.length){html+=`<div class="section"><div class="section-label">Pending · ${pending.length}</div><div class="card-list">`;pending.forEach(t=>html+=taskRow(t));html+=`</div></div>`;}
+  if(done.length){html+=`<div class="section"><div class="section-label">Completed · ${done.length}</div><div class="card-list">`;done.forEach(t=>html+=taskRow(t));html+=`</div></div>`;}
+  return html||`<div class="signin-screen"><div class="signin-icon">✅</div><div class="signin-title">No tasks yet</div><div class="signin-sub">Tap + to add your first task.</div></div>`;
+}
+function taskRow(t){
+  return`<div class="card-row"><div class="check-circle ${t.done?'done':''}" onclick="toggleTask(${t.id});event.stopPropagation()">${t.done?'<span class="checkmark">✓</span>':''}</div><div style="flex:1"><div class="task-title ${t.done?'done':''}">${t.title}</div><div class="task-meta"><div class="priority-dot" style="background:${priorityColors[t.priority]}"></div><span class="task-source">${t.priority} · ${t.due}</span></div><div style="font-size:12px;color:#8e8e93;margin-top:2px">${t.source}</div></div></div>`;
+}
+function toggleTask(id){const t=state.tasks.find(t=>t.id===id);if(t){t.done=!t.done;render();showToast(t.done?'Task completed ✓':'Task reopened');}}
+function openAddTask(){
+  document.getElementById('sheetTitle').textContent='New Task';
+  document.getElementById('sheetBody').innerHTML=`
+    <div class="form-group"><label class="form-label">Title</label><input class="form-input" id="taskInput" placeholder="What needs to be done?"></div>
+    <div class="form-group"><label class="form-label">Priority</label><div class="priority-row"><button class="priority-chip sel-High" id="p-High" onclick="selectPriority('High')">🔴 High</button><button class="priority-chip" id="p-Medium" onclick="selectPriority('Medium')">🟡 Med</button><button class="priority-chip" id="p-Low" onclick="selectPriority('Low')">🟢 Low</button></div></div>
+    <div class="form-group"><label class="form-label">Due</label><input class="form-input" id="dueInput" placeholder="Today, Tomorrow, Friday…"></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:6px" onclick="submitTask()">Add Task</button>`;
+  window._selectedPriority='High';
+  document.getElementById('sheetOverlay').classList.add('open');
+  setTimeout(()=>document.getElementById('taskInput').focus(),300);
+}
+function selectPriority(p){window._selectedPriority=p;['High','Medium','Low'].forEach(pr=>{document.getElementById(`p-${pr}`).className=`priority-chip${pr===p?` sel-${pr}`:''}`;});}
+function submitTask(){
+  const title=document.getElementById('taskInput').value.trim();if(!title){document.getElementById('taskInput').style.borderColor='#ff3b30';return;}
+  const due=document.getElementById('dueInput').value.trim()||'No due date';
+  state.tasks.unshift({id:Date.now(),title,priority:window._selectedPriority||'Medium',due,done:false,source:'Manual'});
+  closeSheetDirect();render();showToast('Task added ✓');
+}
+
+// ── FOLLOW-UPS ────────────────────────────
+function renderFollowUps(){
+  if(!state.followups.length)return`<div class="signin-screen"><div class="signin-icon">🔁</div><div class="signin-title">No follow-ups yet</div><div class="signin-sub">Tap + to add a meeting follow-up.</div></div>`;
+  let html=`<div class="section"><div class="card-list">`;
+  state.followups.forEach(f=>{
+    const sc=statusColors[f.status];
+    html+=`<div class="card-row" onclick="openEditFollowUp(${f.id})">
+      <div class="avatar" style="background:${f.color}">${f.initials}</div>
+      <div style="flex:1">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+          <span class="fu-name">${f.contact}</span><span class="status-pill" style="background:${sc}18;color:${sc}">${f.status}</span>
+        </div>
+        <div class="fu-topic">${f.topic}</div>
+        <div class="fu-meeting">${f.meeting}${f.daysAgo?' · '+f.daysAgo+'d ago':''}</div>
+        ${f.status!=='Sent'?`<button class="btn btn-secondary" style="margin-top:8px;padding:8px 14px;font-size:13px;flex:0" onclick="markSent(${f.id});event.stopPropagation()">Mark as Sent ✓</button>`:''}
+      </div>
+    </div>`;
+  });
+  return html+`</div></div>`;
+}
+function markSent(id){const f=state.followups.find(f=>f.id===id);if(f){f.status='Sent';render();showToast('Marked as sent ✓');}}
+
+function openAddFollowUp(){
+  selectedFuColor=AVATAR_COLORS[0];
+  document.getElementById('sheetTitle').textContent='New Follow-Up';
+  document.getElementById('sheetBody').innerHTML=buildFollowUpForm(null);
+  document.getElementById('sheetOverlay').classList.add('open');
+  setTimeout(()=>document.getElementById('fuContact').focus(),300);
+}
+
+function openEditFollowUp(id){
+  const f=state.followups.find(f=>f.id===id);if(!f)return;
+  selectedFuColor=f.color;
+  document.getElementById('sheetTitle').textContent='Edit Follow-Up';
+  document.getElementById('sheetBody').innerHTML=buildFollowUpForm(f);
+  document.getElementById('sheetOverlay').classList.add('open');
+}
+
+function buildFollowUpForm(f){
+  const colorDots=AVATAR_COLORS.map(c=>`<div class="color-dot${c===selectedFuColor?' selected':''}" style="background:${c}" onclick="selectFuColor('${c}',this)"></div>`).join('');
+  return`
+    <div class="form-group"><label class="form-label">Contact Name</label><input class="form-input" id="fuContact" placeholder="e.g. Sarah Chen" value="${f?f.contact:''}"></div>
+    <div class="form-group"><label class="form-label">Topic / What to follow up on</label><input class="form-input" id="fuTopic" placeholder="e.g. Budget approval sign-off" value="${f?f.topic:''}"></div>
+    <div class="form-group"><label class="form-label">Meeting / Context</label><input class="form-input" id="fuMeeting" placeholder="e.g. Q2 Planning — Mar 20" value="${f?f.meeting:''}"></div>
+    <div class="form-group"><label class="form-label">Status</label>
+      <div class="status-row">
+        <button class="status-chip${(!f||f.status==='Pending')?' sel-Pending':''}" id="fs-Pending" onclick="selectFuStatus('Pending')">⏳ Pending</button>
+        <button class="status-chip${f&&f.status==='Overdue'?' sel-Overdue':''}" id="fs-Overdue" onclick="selectFuStatus('Overdue')">🔴 Overdue</button>
+        <button class="status-chip${f&&f.status==='Sent'?' sel-Sent':''}" id="fs-Sent" onclick="selectFuStatus('Sent')">✅ Sent</button>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Avatar Color</label><div class="color-row">${colorDots}</div></div>
+    <div class="btn-row">
+      ${f?`<button class="btn btn-danger" onclick="deleteFollowUp(${f.id})">Delete</button>`:''}
+      <button class="btn btn-primary" onclick="submitFollowUp(${f?f.id:'null'})">Save Follow-Up</button>
+    </div>`;
+}
+
+function selectFuColor(color, el){
+  selectedFuColor=color;
+  document.querySelectorAll('.color-dot').forEach(d=>d.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function selectFuStatus(s){
+  window._selectedFuStatus=s;
+  ['Pending','Overdue','Sent'].forEach(st=>{
+    const el=document.getElementById(`fs-${st}`);
+    if(el)el.className=`status-chip${st===s?` sel-${st}`:''}`;
+  });
+}
+
+function submitFollowUp(editId){
+  const contact=document.getElementById('fuContact').value.trim();
+  const topic=document.getElementById('fuTopic').value.trim();
+  if(!contact||!topic){showToast('Name and topic are required');return;}
+  const meeting=document.getElementById('fuMeeting').value.trim()||'';
+  const status=window._selectedFuStatus||(editId?state.followups.find(f=>f.id===editId)?.status:'Pending')||'Pending';
+  const initials=contact.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  if(editId&&editId!=='null'){
+    const f=state.followups.find(f=>f.id===editId);
+    if(f){Object.assign(f,{contact,topic,meeting,status,initials,color:selectedFuColor,daysAgo:f.daysAgo});}
+  } else {
+    state.followups.unshift({id:Date.now(),contact,topic,meeting,status,initials,color:selectedFuColor,daysAgo:0});
+  }
+  closeSheetDirect();render();showToast('Follow-up saved ✓');
+}
+
+function deleteFollowUp(id){
+  state.followups=state.followups.filter(f=>f.id!==id);
+  closeSheetDirect();render();showToast('Follow-up deleted');
+}
+
+// ── NOTES ─────────────────────────────────
+function renderNotes(){
+  if(!state.notes.length)return`<div class="signin-screen"><div class="signin-icon">📝</div><div class="signin-title">No notes yet</div><div class="signin-sub">Tap ✏️ to create a note or record a meeting.</div></div>`;
+  let html='<div style="padding-bottom:12px">';
+  state.notes.forEach(n=>{
+    const tc=n.type==='voice'?'voice':n.type==='meeting'?'meeting':'manual';
+    const tl=n.type==='voice'?'🎙️ Recorded':n.type==='meeting'?'📅 Meeting':'✏️ Note';
+    html+=`<div class="note-card" onclick="openNote(${n.id})"><div class="note-card-header"><div class="note-card-title">${n.title||'Untitled'}</div><div class="note-card-date">${n.date}</div></div><div class="note-card-preview">${n.body}</div><span class="note-tag ${tc}">${tl}</span></div>`;
+  });
+  return html+'</div>';
+}
+function openNewNote(){
+  state.editingNoteId=null;
+  document.getElementById('noteTitleInput').value='';
+  document.getElementById('noteBodyInput').value='';
+  document.getElementById('noteMetaDate').textContent=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  document.getElementById('noteWordCount').textContent='0 words';
+  document.getElementById('aiNotePanel').style.display='none';
+  document.getElementById('recordBtn').className='record-btn idle';
+  document.getElementById('recordBtnText').textContent='Record Meeting';
+  document.getElementById('recordingStatus').style.display='none';
+  document.getElementById('micPermissionMsg').style.display='none';
+  document.getElementById('noteEditor').classList.add('open');
+  document.getElementById('noteBodyInput').oninput=updateWordCount;
+  checkMicSupport();
+  setTimeout(()=>document.getElementById('noteTitleInput').focus(),350);
+}
+function openNote(id){
+  const n=state.notes.find(n=>n.id===id);if(!n)return;
+  state.editingNoteId=id;
+  document.getElementById('noteTitleInput').value=n.title;
+  document.getElementById('noteBodyInput').value=n.body;
+  document.getElementById('noteMetaDate').textContent=n.date;
+  document.getElementById('aiNotePanel').style.display='none';
+  document.getElementById('recordBtn').className='record-btn idle';
+  document.getElementById('recordBtnText').textContent='Record Meeting';
+  document.getElementById('recordingStatus').style.display='none';
+  document.getElementById('micPermissionMsg').style.display='none';
+  updateWordCount();
+  document.getElementById('noteBodyInput').oninput=updateWordCount;
+  document.getElementById('noteEditor').classList.add('open');
+  checkMicSupport();
+}
+function closeNote(){if(isRecording)stopRecording();document.getElementById('noteEditor').classList.remove('open');document.getElementById('aiNotePanel').style.display='none';render();}
+function saveNote(){
+  const title=document.getElementById('noteTitleInput').value.trim()||'Untitled';
+  const body=document.getElementById('noteBodyInput').value.trim();
+  if(!body&&title==='Untitled'){closeNote();return;}
+  const dateStr=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  if(state.editingNoteId){const n=state.notes.find(n=>n.id===state.editingNoteId);if(n){n.title=title;n.body=body;n.date=dateStr;}}
+  else state.notes.unshift({id:Date.now(),title,body,date:dateStr,type:'manual'});
+  closeNote();showToast('Note saved ✓');
+}
+function updateWordCount(){const t=document.getElementById('noteBodyInput').value.trim();const w=t?t.split(/\s+/).length:0;document.getElementById('noteWordCount').textContent=`${w} word${w!==1?'s':''}`;}
+
+// ── VOICE ─────────────────────────────────
+function checkMicSupport(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){document.getElementById('micUnsupported').style.display='block';document.getElementById('recordBtn').style.opacity='0.4';document.getElementById('recordBtn').style.pointerEvents='none';}
+  else{document.getElementById('micUnsupported').style.display='none';document.getElementById('recordBtn').style.opacity='1';document.getElementById('recordBtn').style.pointerEvents='';}
+}
+function setMicMsg(msg){const el=document.getElementById('micPermissionMsg');el.textContent=msg;el.style.display=msg?'block':'none';}
+function toggleRecording(){if(isRecording)stopRecording();else startRecording();}
+function startRecording(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){document.getElementById('micUnsupported').style.display='block';return;}
+  navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{stream.getTracks().forEach(t=>t.stop());setMicMsg('');beginSpeechRecognition();}).catch(err=>{
+    if(err.name==='NotAllowedError')setMicMsg('⚠️ Mic access denied. Allow in browser settings.');
+    else if(err.name==='NotFoundError')setMicMsg('⚠️ No microphone found.');
+    else setMicMsg('⚠️ Could not access mic: '+err.message);
+  });
+}
+function beginSpeechRecognition(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  recognition=new SR();recognition.continuous=true;recognition.interimResults=true;recognition.lang='en-US';
+  const ta=document.getElementById('noteBodyInput');
+  let base=ta.value;if(base&&!base.endsWith('\n'))base+='\n';let interim='';
+  recognition.onstart=()=>{
+    isRecording=true;setMicMsg('');
+    const ti=document.getElementById('noteTitleInput');
+    if(!ti.value.trim()){const n=new Date();ti.value=`Meeting – ${n.toLocaleDateString('en-US',{month:'short',day:'numeric'})} ${n.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}`;}
+    recSeconds=0;document.getElementById('recTimer').textContent='0:00';
+    document.getElementById('recordingStatus').style.display='block';
+    recTimerInterval=setInterval(()=>{recSeconds++;const m=Math.floor(recSeconds/60),s=recSeconds%60;document.getElementById('recTimer').textContent=`${m}:${s.toString().padStart(2,'0')}`;},1000);
+    document.getElementById('recordBtn').className='record-btn recording';
+    document.getElementById('recordBtnText').textContent='Tap to Stop';
+  };
+  recognition.onresult=ev=>{let fin='',intr='';for(let i=ev.resultIndex;i<ev.results.length;i++){const t=ev.results[i][0].transcript;if(ev.results[i].isFinal)fin+=t+' ';else intr+=t;}if(fin){base+=fin;interim='';}else interim=intr;ta.value=base+interim;ta.scrollTop=ta.scrollHeight;updateWordCount();};
+  recognition.onerror=ev=>{if(ev.error==='not-allowed'){setMicMsg('⚠️ Mic blocked.');stopRecording();}else if(ev.error==='network'){setMicMsg('⚠️ Network error.');stopRecording();}else if(ev.error!=='no-speech'&&ev.error!=='aborted'){setMicMsg('⚠️ Error: '+ev.error);stopRecording();}};
+  recognition.onend=()=>{if(isRecording){try{recognition.start();}catch(e){}}};
+  try{recognition.start();}catch(e){setMicMsg('⚠️ Could not start: '+e.message);}
+}
+function stopRecording(){
+  isRecording=false;
+  if(recognition){recognition.onend=null;try{recognition.stop();}catch(e){}recognition=null;}
+  clearInterval(recTimerInterval);
+  document.getElementById('recordingStatus').style.display='none';
+  document.getElementById('recordBtn').className='record-btn idle';
+  document.getElementById('recordBtnText').textContent='Record Meeting';
+  if(state.editingNoteId){const n=state.notes.find(n=>n.id===state.editingNoteId);if(n)n.type='voice';}
+  showToast('Recording stopped ✓');
+}
+
+// ── AI NOTE SUMMARY ───────────────────────
+async function aiSummarizeNote(){
+  const title=document.getElementById('noteTitleInput').value||'Untitled';
+  const body=document.getElementById('noteBodyInput').value.trim();
+  if(!body){showToast('Add some content first');return;}
+  const panel=document.getElementById('aiNotePanel'),content=document.getElementById('aiNotePanelContent');
+  panel.style.display='block';content.innerHTML=`<div class="ai-loading"><div class="spinner"></div> Claude is summarizing…</div>`;panel.scrollIntoView({behavior:'smooth'});
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:`Meeting assistant. Plain text only:\n\nSUMMARY: 2-3 sentence overview.\nDECISIONS: Key decisions, one per line starting "-".\nACTION ITEMS: Next steps, one per line starting "-".\nFOLLOW UPS: Follow-up items, one per line starting "-".\n\nMeeting: ${title}\nNotes: ${body}`}]})});
+    const data=await res.json();const text=data.content?.map(b=>b.text||'').join('')||'';
+    const sections={SUMMARY:'',DECISIONS:[],'ACTION ITEMS':[],'FOLLOW UPS':[]};let cur=null;
+    text.split('\n').forEach(raw=>{const line=raw.trim();if(!line)return;if(line.startsWith('SUMMARY:')){cur='SUMMARY';sections.SUMMARY=line.slice(8).trim();}else if(line.startsWith('DECISIONS:')){cur='DECISIONS';}else if(line.startsWith('ACTION ITEMS:')){cur='ACTION ITEMS';}else if(line.startsWith('FOLLOW UPS:')){cur='FOLLOW UPS';}else if(line.startsWith('-')&&cur&&cur!=='SUMMARY')sections[cur].push(line.replace(/^-\s*/,''));});
+    let html='';
+    if(sections.SUMMARY)html+=`<div class="ai-note-section"><div class="ai-note-label">Summary</div><div class="ai-note-content">${sections.SUMMARY}</div></div>`;
+    if(sections['ACTION ITEMS'].length){html+=`<div class="ai-note-section"><div class="ai-note-label">Action Items</div>`;sections['ACTION ITEMS'].forEach(i=>html+=`<div class="ai-action-item"><span class="ai-action-bullet">→</span><span class="ai-note-content">${i}</span></div>`);html+=`</div>`;}
+    if(sections.DECISIONS.length){html+=`<div class="ai-note-section"><div class="ai-note-label">Decisions</div>`;sections.DECISIONS.forEach(i=>html+=`<div class="ai-action-item"><span class="ai-action-bullet">✓</span><span class="ai-note-content">${i}</span></div>`);html+=`</div>`;}
+    if(sections['FOLLOW UPS'].length){html+=`<div class="ai-note-section"><div class="ai-note-label">Follow-Ups</div>`;sections['FOLLOW UPS'].forEach(i=>html+=`<div class="ai-action-item"><span class="ai-action-bullet">🔁</span><span class="ai-note-content">${i}</span></div>`);html+=`</div>`;}
+    content.innerHTML=html||`<div style="color:var(--sub);font-size:14px">No structured content found.</div>`;
+  }catch(e){content.innerHTML=`<div style="color:var(--red);font-size:14px">Couldn't load summary.</div>`;}
+}
+
+// ── UTILS ─────────────────────────────────
+function closeSheet(e){if(e.target===document.getElementById('sheetOverlay'))closeSheetDirect();}
+function closeSheetDirect(){document.getElementById('sheetOverlay').classList.remove('open'); window._selectedFuStatus=null;}
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
+</script>
+</body>
+</html>
